@@ -1,6 +1,7 @@
 
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 
 st.set_page_config(page_title="Análise de Estoque Fiscaltech", layout="wide")
 st.title("📦 Análise de Estrutura x Estoque com Regras de Transposição")
@@ -8,12 +9,11 @@ st.title("📦 Análise de Estrutura x Estoque com Regras de Transposição")
 with st.sidebar:
     st.markdown("<style>div[data-testid='stSidebar'] {width: 300px;}</style>", unsafe_allow_html=True)
     st.header("🔧 Parâmetros da Análise")
-qtd_equipamentos = st.sidebar.number_input("Quantidade de Equipamentos a Produzir", min_value=1, value=5)
-codigo_destino = st.sidebar.selectbox("Prefixo de Código de Destino (TP)", ["PL", "PV", "MP", "AA"])
+    qtd_equipamentos = st.number_input("Quantidade de Equipamentos a Produzir", min_value=1, value=5)
+    codigo_destino = st.selectbox("Prefixo de Código de Destino (TP)", ["PL", "PV", "MP", "AA"])
 
 st.markdown("---")
 
-# Upload dos arquivos
 estrutura_file = st.file_uploader("📥 Envie a planilha de Estrutura do Produto", type=["xlsx"])
 estoque_file = st.file_uploader("📥 Envie a planilha de Estoque Atual", type=["xlsx"])
 
@@ -82,15 +82,12 @@ if executar and estrutura_file and estoque_file:
     st.success("✅ Análise concluída com sucesso!")
     st.dataframe(df_resultado, use_container_width=True)
 
-    
-from io import BytesIO
-buffer = BytesIO()
-df_resultado.to_excel(buffer, index=False, engine='openpyxl')
-buffer.seek(0)
-st.download_button(
-    label="📥 Baixar Resultado em Excel",
-    data=buffer,
-    file_name="resultado_estoque.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
+    buffer = BytesIO()
+    df_resultado.to_excel(buffer, index=False, engine='openpyxl')
+    buffer.seek(0)
+    st.download_button(
+        label="📥 Baixar Resultado em Excel",
+        data=buffer,
+        file_name="resultado_estoque.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
