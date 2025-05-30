@@ -20,7 +20,7 @@ estoque_file = st.file_uploader("📥 Envie a planilha de Estoque Atual", type=[
 executar = st.button("🚀 Executar Análise")
 nova_analise = st.button("🔁 Nova Análise")
 if nova_analise:
-    st.experimental_rerun()
+    st.rerun()
 
 if executar and estrutura_file and estoque_file:
     estrutura_df = pd.read_excel(estrutura_file)
