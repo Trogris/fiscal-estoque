@@ -4,7 +4,7 @@ import pandas as pd
 from io import BytesIO
 
 st.set_page_config(page_title="Análise de Estoque Fiscaltech", layout="wide")
-st.title("📦 Análise de Estrutura x Estoque com Regras de Transposição")
+st.title("📦 Análise de Estoque para Produção")
 
 with st.sidebar:
     st.markdown("<style>div[data-testid='stSidebar'] {width: 300px;}</style>", unsafe_allow_html=True)
