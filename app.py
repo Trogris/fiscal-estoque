@@ -13,27 +13,25 @@ estrutura_file = st.file_uploader("📁 Envie o arquivo de estrutura do produto 
 qtd_equipamentos = st.number_input("🔢 Quantidade de equipamentos a produzir", min_value=1, step=1)
 codigo_destino = st.selectbox("🏷️ Prefixo do código de destino", ["PL", "PV", "MP", "AA"])
 
-if estoque_file and estrutura_file and qtd_equipamentos > 0:
+executar = st.button("🚀 Executar Análise")
+
+if executar and estoque_file and estrutura_file and qtd_equipamentos > 0:
     try:
         estoque_df = pd.read_excel(estoque_file, engine='openpyxl')
         estrutura_df = pd.read_excel(estrutura_file, engine='openpyxl')
 
-        # Padronizar estrutura
         estrutura_df.columns = ['componente', 'descricao', 'qtd_por_equipamento']
         estrutura_df['qtd_necessaria'] = estrutura_df['qtd_por_equipamento'] * qtd_equipamentos
 
-        # Padronizar estoque
         estoque_df = estoque_df.rename(columns={"CODIGO": "componente", "TP": "codigo", "ESTOQUE": "qtd"})
         estoque_df['codigo'] = estoque_df['codigo'].str.upper()
 
-        # Regras fixas
         regras_df = pd.DataFrame({
             "codigo_origem": ["PV", "PV", "AA", "AA", "MP", "MP", "PL", "PL"],
             "codigo_destino": ["PL", "MP", "PV", "MP", "PL", "PV", "MP", "PV"]
         })
         regras_validas = regras_df[~regras_df['codigo_origem'].str.startswith("RP") & ~regras_df['codigo_destino'].str.startswith("RP")]
 
-        # Análise
         resultado = []
         for _, item in estrutura_df.iterrows():
             comp = item['componente']
@@ -58,10 +56,11 @@ if estoque_file and estrutura_file and qtd_equipamentos > 0:
                     if qtd_restante <= 0:
                         break
 
-                if qtd_restante <= 0:
-                    resultado.append((comp, 'Necessário Transposição', faltante, ' / '.join(transposicoes)))
+                if faltante > 0 and not transposicoes:
+                    status = 'Faltando mesmo com transposição'
                 else:
-                    resultado.append((comp, 'Faltando mesmo com transposição', qtd_restante, ' / '.join(transposicoes) if transposicoes else '-'))
+                    status = 'Necessário Transposição' if qtd_restante <= 0 else 'Faltando mesmo com transposição'
+                resultado.append((comp, status, qtd_restante if qtd_restante > 0 else 0, ' / '.join(transposicoes) if transposicoes else '-'))
 
         df_resultado = pd.DataFrame(resultado, columns=['Componente', 'Situação', 'Qtd Faltante', 'Transposição Sugerida'])
 
@@ -78,6 +77,9 @@ if estoque_file and estrutura_file and qtd_equipamentos > 0:
             file_name="resultado_estoque.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+        if st.button("🔁 Nova Análise"):
+            st.experimental_rerun()
 
     except Exception as e:
         st.error(f"Ocorreu um erro ao processar os arquivos: {e}")
