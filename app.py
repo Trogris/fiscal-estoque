@@ -1,94 +1,94 @@
+
 import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="📦 Análise de Estoque para Produção", layout="wide")
+st.set_page_config(page_title="Análise de Estoque para Produção", layout="wide")
 
 st.title("📦 Análise de Estoque para Produção")
+st.markdown("Versão R11 – Regras atualizadas com uso direto de RP para PL e transposição por prioridade")
 
-# Upload dos arquivos
-estrutura_file = st.file_uploader("📥 Estrutura do Produto", type=["xlsx", "csv"])
-estoque_file = st.file_uploader("📥 Estoque Atual", type=["xlsx", "csv"])
-
-# Entrada de parâmetros
-col1, col2 = st.columns(2)
+# Uploads
+col1, col2, col3 = st.columns(3)
 with col1:
-    qtd_equipamentos = st.number_input("Quantidade de Equipamentos a Produzir", min_value=1, step=1)
+    estrutura_file = st.file_uploader("📂 Estrutura do Produto (.xlsx)", type="xlsx", key="estrutura")
 with col2:
-    destino = st.text_input("Código de Destino").strip().upper()
+    estoque_file = st.file_uploader("📂 Estoque Atual (.xlsx)", type="xlsx", key="estoque")
+with col3:
+    quantidade = st.number_input("🔢 Quantidade de Equipamentos a Produzir", min_value=1, value=1)
 
-def carregar_arquivo(arquivo):
-    if arquivo.name.endswith('.csv'):
-        return pd.read_csv(arquivo, sep=None, engine='python')
-    return pd.read_excel(arquivo)
+# Código destino (PL ou PV)
+codigo_destino = st.selectbox("🏷️ Prefixo do Código de Destino", options=["PL", "PV"])
 
-def analisar_estoque(estrutura_df, estoque_df, qtd_equipamentos, destino):
-    estrutura_df.columns = estrutura_df.columns.str.strip()
-    estoque_df.columns = estoque_df.columns.str.strip()
+executar = st.button("🚀 Executar Análise")
 
-    estrutura_df["Código do Item"] = estrutura_df["Código do Item"].astype(str).str.strip().str.upper()
-    estoque_df["Código do Item"] = estoque_df["Código do Item"].astype(str).str.strip().str.upper()
-    estoque_df["Prefixo"] = estoque_df["Prefixo"].astype(str).str.strip().str.upper()
+if executar and estrutura_file and estoque_file:
+    estrutura_df = pd.read_excel(estrutura_file)
+    estoque_df = pd.read_excel(estoque_file)
 
-    estrutura_df["Quantidade Total Necessária"] = estrutura_df["Quantidade"] * qtd_equipamentos
+    estrutura_df["Quantidade Total Necessária"] = estrutura_df["Quantidade necessária"] * quantidade
+
+    # Extrai prefixo do estoque
+    estoque_df["Prefixo"] = estoque_df["Código do Item"].str.extract(r'^([A-Z]+)')
 
     resultado = []
 
-    for _, row in estrutura_df.iterrows():
-        item = row["Código do Item"]
-        descricao = row["Descrição do Item"]
-        qtd_necessaria = row["Quantidade Total Necessária"]
+    for _, item in estrutura_df.iterrows():
+        codigo_item = item["Código do Item"]
+        descricao_item = item["Descrição do Item"]
+        qtd_necessaria = item["Quantidade Total Necessária"]
 
-        estoque_destino = estoque_df[(estoque_df["Código do Item"] == item) & (estoque_df["Prefixo"] == destino)]["Saldo"].sum()
+        saldo_disponivel = estoque_df[estoque_df["Código do Item"] == codigo_item]
+        saldo_destino = saldo_disponivel[saldo_disponivel["Prefixo"] == codigo_destino]["Saldo"].sum()
 
-        falta = max(qtd_necessaria - estoque_destino, 0)
+        transposicoes = saldo_disponivel[
+            (saldo_disponivel["Prefixo"].isin(["AA", "MP", "PV", "PL"])) &
+            (saldo_disponivel["Prefixo"] != codigo_destino) &
+            (saldo_disponivel["Prefixo"] != "RP")
+        ]
 
-        transposicao_sugerida = 0
-        origem_transposicao = ""
+        saldo_transponivel = transposicoes["Saldo"].sum()
 
-        if falta > 0:
-            if destino == "PL":
-                estoque_rp = estoque_df[(estoque_df["Código do Item"] == item) & (estoque_df["Prefixo"] == "RP")]["Saldo"].sum()
-                if estoque_rp > 0:
-                    usar_rp = min(falta, estoque_rp)
-                    falta -= usar_rp
-                    origem_transposicao += f"Usar {usar_rp} do RP. "
-                    transposicao_sugerida += usar_rp
+        saldo_rp = saldo_disponivel[saldo_disponivel["Prefixo"] == "RP"]["Saldo"].sum() if codigo_destino == "PL" else 0
 
-            saldo_outros = estoque_df[
-                (estoque_df["Código do Item"] == item) &
-                (estoque_df["Prefixo"] != destino) &
-                (estoque_df["Prefixo"] != "RP")
-            ].groupby("Prefixo")["Saldo"].sum()
+        saldo_total = saldo_destino + saldo_transponivel + saldo_rp
+        faltante = max(0, qtd_necessaria - saldo_total)
 
-            for prefixo_origem, saldo in saldo_outros.items():
-                if saldo > 0 and falta > 0:
-                    qtd_transp = min(saldo, falta)
-                    falta -= qtd_transp
-                    origem_transposicao += f"Transpor {qtd_transp} de {prefixo_origem} para {destino}. "
-                    transposicao_sugerida += qtd_transp
+        usar_destino = min(saldo_destino, qtd_necessaria)
+        restante = qtd_necessaria - usar_destino
+
+        usar_transposicao = min(saldo_transponivel, restante)
+        restante -= usar_transposicao
+
+        usar_rp = min(saldo_rp, restante) if codigo_destino == "PL" else 0
+        restante -= usar_rp
+
+        transpor_texto = f"{usar_transposicao} unidades transpostas" if usar_transposicao else ""
+        rp_texto = f"{usar_rp} unidades de RP usadas" if usar_rp else ""
+        comentario = " | ".join(filter(None, [transpor_texto, rp_texto]))
+        if restante > 0:
+            comentario += f" | {restante} a comprar"
 
         resultado.append({
-            "Código do Item": item,
-            "Descrição": descricao,
+            "Código do Item": codigo_item,
+            "Descrição do Item": descricao_item,
             "Qtd. Necessária": qtd_necessaria,
-            "Saldo em Estoque do Destino": estoque_destino,
-            "Falta": max(qtd_necessaria - estoque_destino, 0),
-            "Necessário Transposição": transposicao_sugerida,
-            "📋 Ações Sugeridas": origem_transposicao.strip(),
-            "🔧 Parâmetros da Análise": f"{qtd_equipamentos} un. | Destino: {destino}"
+            "No Destino": usar_destino,
+            "Transposição": usar_transposicao,
+            "Uso RP": usar_rp,
+            "Faltante": restante,
+            "🔧 Parâmetros da Análise": comentario
         })
 
-    return pd.DataFrame(resultado)
+    df_resultado = pd.DataFrame(resultado)
 
-if estrutura_file and estoque_file and qtd_equipamentos > 0 and destino:
-    estrutura_df = carregar_arquivo(estrutura_file)
-    estoque_df = carregar_arquivo(estoque_file)
-
-    df_resultado = analisar_estoque(estrutura_df, estoque_df, qtd_equipamentos, destino)
-
+    st.success("✅ Análise concluída com sucesso!")
     st.dataframe(df_resultado, use_container_width=True)
 
     buffer = io.BytesIO()
-    df_resultado.to_excel(buffer, index=False, engine='openpyxl')
-    st.download_button("Baixar Resultado em Excel", data=buffer.getvalue(), file_name="resultado_estoque.xlsx")
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_resultado.to_excel(writer, index=False)
+    st.download_button("📥 Baixar Resultado em Excel", data=buffer.getvalue(), file_name="resultado_estoque.xlsx")
+
+if st.button("🔄 Nova Análise"):
+    st.experimental_rerun()
